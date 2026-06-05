@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Royal Ajusco</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:'DM Sans',-apple-system,sans-serif;background:#0d0d0d;color:#f5f5f5;text-align:center;padding:24px;gap:22px}
+  h1{font-family:'Cormorant Garamond',Georgia,serif;font-size:2.6rem;font-weight:600;margin:0;color:#C9A24B;letter-spacing:.5px}
+  p{font-size:1.05rem;line-height:1.6;color:#cfcfcf;margin:0;max-width:520px}
+  .wa{display:inline-block;background:#3B6FF0;color:#fff;text-decoration:none;
+    padding:13px 26px;border-radius:8px;font-weight:600}
+  .wa:active{transform:translateY(1px)}
+  .game-wrap{width:100%;max-width:620px}
+  canvas{width:100%;background:#111;border:1px solid #2a2a2a;border-radius:10px;display:block;touch-action:manipulation}
+  .hint{font-size:.82rem;color:#777;margin-top:8px}
+  .score{font-family:'DM Sans',sans-serif;font-size:.9rem;color:#C9A24B;margin-top:4px}
+</style>
+</head>
+<body>
+  <div>
+    <h1>Royal Ajusco</h1>
+    <p>Estamos trabajando para ti. Muy pronto nuestro nuevo sitio.<br>Mientras tanto, escríbenos directo por WhatsApp.</p>
+  </div>
+  <a class="wa" href="https://wa.me/525510417537?text=Hola%2C%20me%20interesa%20informaci%C3%B3n%20de%20Royal%20Ajusco">Escríbenos por WhatsApp</a>
+
+  <div class="game-wrap">
+    <canvas id="g" width="600" height="180"></canvas>
+    <div class="score" id="score">Puntos: 0 &nbsp;·&nbsp; Mejor: 0</div>
+    <div class="hint">Espacio / clic / toca para saltar — mientras esperas, juega un rato.</div>
+  </div>
+
+<script>
+(function(){
+  const cv = document.getElementById('g');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height, GROUND = H - 28;
+  const GOLD = '#C9A24B', BLUE = '#3B6FF0';
+
+  let player, obstacles, speed, score, best = 0, running, gravity, spawnTimer, gameOver;
+
+  function reset(){
+    player = { x:48, y:GROUND, w:22, h:24, vy:0, onGround:true };
+    obstacles = [];
+    speed = 4.2;
+    score = 0;
+    gravity = 0.7;
+    spawnTimer = 0;
+    gameOver = false;
+    running = true;
+  }
+
+  function jump(){
+    if(gameOver){ reset(); loop(); return; }
+    if(player.onGround){ player.vy = -11.5; player.onGround = false; }
+  }
+
+  document.addEventListener('keydown', e=>{
+    if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); jump(); }
+  });
+  cv.addEventListener('mousedown', jump);
+  cv.addEventListener('touchstart', e=>{ e.preventDefault(); jump(); }, {passive:false});
+
+  function spawn(){
+    const tall = Math.random() > 0.6;
+    const h = tall ? 34 : 22;
+    obstacles.push({ x: W+10, y: GROUND, w: 16, h: h });
+  }
+
+  function rect(a,b){
+    return a.x < b.x+b.w && a.x+a.w > b.x && a.y-a.h < b.y && a.y > b.y-b.h;
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // ground line
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,GROUND+1); ctx.lineTo(W,GROUND+1); ctx.stroke();
+    // player (gold square w/ blue crest)
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(player.x, player.y-player.h, player.w, player.h);
+    ctx.fillStyle = BLUE;
+    ctx.fillRect(player.x+4, player.y-player.h+4, player.w-8, 6);
+    // obstacles (blue pillars)
+    ctx.fillStyle = BLUE;
+    obstacles.forEach(o=> ctx.fillRect(o.x, o.y-o.h, o.w, o.h));
+    // game over text
+    if(gameOver){
+      ctx.fillStyle = GOLD;
+      ctx.font = "600 20px 'DM Sans', sans-serif";
+      ctx.textAlign = 'center';
+      ctx.fillText('¡Chocaste! Toca para reiniciar', W/2, H/2-6);
+    }
+  }
+
+  function loop(){
+    if(!running) return;
+    // physics
+    player.vy += gravity;
+    player.y += player.vy;
+    if(player.y >= GROUND){ player.y = GROUND; player.vy = 0; player.onGround = true; }
+
+    spawnTimer--;
+    if(spawnTimer <= 0){
+      spawn();
+      spawnTimer = 60 + Math.random()*60 - Math.min(score/40, 35);
+    }
+
+    obstacles.forEach(o=> o.x -= speed);
+    obstacles = obstacles.filter(o=> o.x + o.w > 0);
+
+    for(const o of obstacles){
+      if(rect(player, o)){
+        gameOver = true; running = false;
+        best = Math.max(best, Math.floor(score));
+        draw();
+        document.getElementById('score').textContent =
+          'Puntos: '+Math.floor(score)+'  ·  Mejor: '+best;
+        return;
+      }
+    }
+
+    score += 0.1;
+    speed += 0.0009;
+    document.getElementById('score').textContent =
+      'Puntos: '+Math.floor(score)+'  ·  Mejor: '+best;
+
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  reset();
+  draw();
+  // idle prompt before first input
+  ctx.fillStyle = GOLD;
+  ctx.font = "600 16px 'DM Sans', sans-serif";
+  ctx.textAlign = 'center';
+  ctx.fillText('Toca o presiona espacio para jugar', W/2, H/2);
+  let started = false;
+  function start(){ if(!started){ started = true; loop(); } }
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.code==='ArrowUp') start(); });
+  cv.addEventListener('mousedown', start);
+  cv.addEventListener('touchstart', start, {passive:false});
+})();
+</script>
+</body>
+</html>
