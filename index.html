@@ -8,142 +8,168 @@
 <style>
   *{box-sizing:border-box}
   body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-family:'DM Sans',-apple-system,sans-serif;background:#0d0d0d;color:#f5f5f5;text-align:center;padding:24px;gap:22px}
+    font-family:'DM Sans',-apple-system,sans-serif;background:#0d0d0d;color:#f5f5f5;text-align:center;padding:24px;gap:20px}
   h1{font-family:'Cormorant Garamond',Georgia,serif;font-size:2.6rem;font-weight:600;margin:0;color:#C9A24B;letter-spacing:.5px}
   p{font-size:1.05rem;line-height:1.6;color:#cfcfcf;margin:0;max-width:520px}
   .wa{display:inline-block;background:#3B6FF0;color:#fff;text-decoration:none;
     padding:13px 26px;border-radius:8px;font-weight:600}
   .wa:active{transform:translateY(1px)}
-  .game-wrap{width:100%;max-width:620px}
-  canvas{width:100%;background:#111;border:1px solid #2a2a2a;border-radius:10px;display:block;touch-action:manipulation}
-  .hint{font-size:.82rem;color:#777;margin-top:8px}
-  .score{font-family:'DM Sans',sans-serif;font-size:.9rem;color:#C9A24B;margin-top:4px}
+  .game-wrap{width:100%;max-width:380px}
+  canvas{width:100%;background:#0a0a12;border:1px solid #2a2a2a;border-radius:10px;display:block;touch-action:none}
+  .hud{font-size:.9rem;color:#C9A24B;margin-top:6px}
+  .hint{font-size:.8rem;color:#777;margin-top:6px}
 </style>
 </head>
 <body>
   <div>
     <h1>Royal Ajusco</h1>
-    <p>Estamos trabajando para ti. Muy pronto nuestro nuevo sitio.<br>Mientras tanto, escríbenos directo por WhatsApp.</p>
+    <p>Estamos trabajando para ti. Muy pronto nuestro nuevo sitio.<br>Mientras tanto, escr&iacute;benos directo por WhatsApp.</p>
   </div>
-  <a class="wa" href="https://wa.me/525510417537?text=Hola%2C%20me%20interesa%20informaci%C3%B3n%20de%20Royal%20Ajusco">Escríbenos por WhatsApp</a>
+  <a class="wa" href="https://wa.me/525510417537?text=Hola%2C%20me%20interesa%20informaci%C3%B3n%20de%20Royal%20Ajusco">Escr&iacute;benos por WhatsApp</a>
 
   <div class="game-wrap">
-    <canvas id="g" width="600" height="180"></canvas>
-    <div class="score" id="score">Puntos: 0 &nbsp;·&nbsp; Mejor: 0</div>
-    <div class="hint">Espacio / clic / toca para saltar — mientras esperas, juega un rato.</div>
+    <canvas id="g" width="360" height="480"></canvas>
+    <div class="hud" id="hud">Altura: 0 &nbsp;&middot;&nbsp; Mejor: 0</div>
+    <div class="hint">Mueve: &larr; &rarr; / inclina el dedo / arrastra &middot; Sube lo m&aacute;s alto que puedas</div>
   </div>
 
 <script>
 (function(){
-  const cv = document.getElementById('g');
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height, GROUND = H - 28;
-  const GOLD = '#C9A24B', BLUE = '#3B6FF0';
+  const cv=document.getElementById('g'), ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+  const GOLD='#C9A24B', BLUE='#3B6FF0', CREAM='#f5f5f5';
+  let king, plats, score, best=0, state, cameraY, vx;
 
-  let player, obstacles, speed, score, best = 0, running, gravity, spawnTimer, gameOver;
+  const PW=58, PH=12;
+  function makePlat(y){ return {x:Math.random()*(W-PW), y:y, w:PW, h:PH}; }
 
   function reset(){
-    player = { x:48, y:GROUND, w:22, h:24, vy:0, onGround:true };
-    obstacles = [];
-    speed = 4.2;
-    score = 0;
-    gravity = 0.7;
-    spawnTimer = 0;
-    gameOver = false;
-    running = true;
+    king={x:W/2-14, y:H-90, w:28, h:30, vy:0};
+    plats=[];
+    // starting floor + a ladder of platforms going up
+    plats.push({x:W/2-PW/2, y:H-50, w:PW, h:PH});
+    for(let i=1;i<10;i++) plats.push(makePlat(H-50-i*55));
+    score=0; cameraY=0; vx=0; state='play';
   }
 
-  function jump(){
-    if(gameOver){ reset(); loop(); return; }
-    if(player.onGround){ player.vy = -11.5; player.onGround = false; }
-  }
-
-  document.addEventListener('keydown', e=>{
-    if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); jump(); }
+  const GRAV=0.45, JUMP=-12.2, MOVE=5;
+  const keys={};
+  document.addEventListener('keydown',e=>{
+    if(['ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+    keys[e.code]=true;
+    if(e.code==='Space' && state!=='play') reset();
   });
-  cv.addEventListener('mousedown', jump);
-  cv.addEventListener('touchstart', e=>{ e.preventDefault(); jump(); }, {passive:false});
+  document.addEventListener('keyup',e=>keys[e.code]=false);
 
-  function spawn(){
-    const tall = Math.random() > 0.6;
-    const h = tall ? 34 : 22;
-    obstacles.push({ x: W+10, y: GROUND, w: 16, h: h });
-  }
+  // touch / mouse: steer toward finger x
+  let touchX=null;
+  function tx(e){const r=cv.getBoundingClientRect();const cx=(e.touches?e.touches[0].clientX:e.clientX);return (cx-r.left)*(W/r.width);}
+  cv.addEventListener('touchstart',e=>{e.preventDefault();if(state!=='play'){reset();return;}touchX=tx(e);},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();touchX=tx(e);},{passive:false});
+  cv.addEventListener('touchend',e=>{e.preventDefault();touchX=null;},{passive:false});
+  cv.addEventListener('mousedown',e=>{if(state!=='play'){reset();return;}touchX=tx(e);});
+  cv.addEventListener('mousemove',e=>{if(touchX!==null)touchX=tx(e);});
+  cv.addEventListener('mouseup',()=>touchX=null);
+  // tilt support (mobile)
+  window.addEventListener('deviceorientation',e=>{ if(e.gamma!=null) vx=Math.max(-1,Math.min(1,e.gamma/25))*MOVE; });
 
-  function rect(a,b){
-    return a.x < b.x+b.w && a.x+a.w > b.x && a.y-a.h < b.y && a.y > b.y-b.h;
+  function step(){
+    if(state==='play'){
+      // horizontal control: keys > touch > tilt
+      if(keys['ArrowLeft']) king.x-=MOVE;
+      else if(keys['ArrowRight']) king.x+=MOVE;
+      else if(touchX!==null){ const c=king.x+king.w/2; king.x += Math.max(-MOVE,Math.min(MOVE,(touchX-c)*0.3)); }
+      else king.x+=vx;
+      // wrap around edges
+      if(king.x+king.w<0) king.x=W;
+      if(king.x>W) king.x=-king.w;
+
+      king.vy+=GRAV; king.y+=king.vy;
+
+      // landing on platforms (only when falling)
+      if(king.vy>0){
+        for(const p of plats){
+          if(king.x+king.w*0.7>p.x && king.x+king.w*0.3<p.x+p.w &&
+             king.y+king.h>p.y && king.y+king.h<p.y+p.h+king.vy){
+            king.vy=JUMP;
+          }
+        }
+      }
+
+      // scroll up when king climbs past mid-screen
+      if(king.y<H*0.42){
+        const dy=H*0.42-king.y;
+        king.y=H*0.42;
+        plats.forEach(p=>p.y+=dy);
+        score+=Math.round(dy);
+      }
+
+      // recycle platforms that fell off bottom
+      plats=plats.filter(p=>p.y<H+20);
+      while(plats.length<10){
+        const topY=Math.min(...plats.map(p=>p.y));
+        plats.push(makePlat(topY-55));
+      }
+
+      // fell off bottom = game over
+      if(king.y>H+10){ state='over'; best=Math.max(best,score); }
+    }
+    draw();
+    document.getElementById('hud').textContent='Altura: '+score+'  \u00b7  Mejor: '+Math.max(best,score);
+    requestAnimationFrame(step);
   }
 
   function draw(){
     ctx.clearRect(0,0,W,H);
-    // ground line
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0,GROUND+1); ctx.lineTo(W,GROUND+1); ctx.stroke();
-    // player (gold square w/ blue crest)
-    ctx.fillStyle = GOLD;
-    ctx.fillRect(player.x, player.y-player.h, player.w, player.h);
-    ctx.fillStyle = BLUE;
-    ctx.fillRect(player.x+4, player.y-player.h+4, player.w-8, 6);
-    // obstacles (blue pillars)
-    ctx.fillStyle = BLUE;
-    obstacles.forEach(o=> ctx.fillRect(o.x, o.y-o.h, o.w, o.h));
-    // game over text
-    if(gameOver){
-      ctx.fillStyle = GOLD;
-      ctx.font = "600 20px 'DM Sans', sans-serif";
-      ctx.textAlign = 'center';
-      ctx.fillText('¡Chocaste! Toca para reiniciar', W/2, H/2-6);
+    // stars
+    ctx.fillStyle='#1a1a28';
+    for(let i=0;i<26;i++){ const sx=(i*61)%W, sy=(i*113+score*0.2)%H; ctx.fillRect(sx,sy,2,2); }
+    // platforms (blue ledges with gold trim)
+    plats.forEach(p=>{
+      ctx.fillStyle=BLUE; ctx.fillRect(p.x,p.y,p.w,p.h);
+      ctx.fillStyle=GOLD; ctx.fillRect(p.x,p.y,p.w,2);
+    });
+    // king = gold crown character
+    const x=king.x, y=king.y, w=king.w, h=king.h;
+    ctx.fillStyle=CREAM; // face/body
+    ctx.fillRect(x+w*0.2,y+h*0.45,w*0.6,h*0.55);
+    ctx.fillStyle=GOLD; // crown
+    ctx.fillRect(x,y+h*0.35,w,h*0.12);
+    ctx.beginPath();
+    ctx.moveTo(x,y+h*0.35);
+    ctx.lineTo(x+w*0.2,y+h*0.05);
+    ctx.lineTo(x+w*0.4,y+h*0.3);
+    ctx.lineTo(x+w*0.5,y);
+    ctx.lineTo(x+w*0.6,y+h*0.3);
+    ctx.lineTo(x+w*0.8,y+h*0.05);
+    ctx.lineTo(x+w,y+h*0.35);
+    ctx.closePath(); ctx.fill();
+    // eyes
+    ctx.fillStyle='#0a0a12';
+    ctx.fillRect(x+w*0.32,y+h*0.6,3,3); ctx.fillRect(x+w*0.6,y+h*0.6,3,3);
+
+    ctx.textAlign='center';
+    if(state==='over'){
+      ctx.fillStyle='rgba(10,10,18,0.7)'; ctx.fillRect(0,H/2-50,W,100);
+      ctx.fillStyle=GOLD; ctx.font="600 22px 'DM Sans',sans-serif";
+      ctx.fillText('Caíste — Altura: '+score,W/2,H/2-6);
+      ctx.fillStyle=CREAM; ctx.font="400 13px 'DM Sans',sans-serif";
+      ctx.fillText('Toca o presiona espacio para reiniciar',W/2,H/2+18);
+    }
+    if(state==='start'){
+      ctx.fillStyle=GOLD; ctx.font="600 18px 'DM Sans',sans-serif";
+      ctx.fillText('Sube la torre real',W/2,H/2-6);
+      ctx.fillStyle=CREAM; ctx.font="400 13px 'DM Sans',sans-serif";
+      ctx.fillText('Toca o presiona espacio para empezar',W/2,H/2+18);
     }
   }
 
-  function loop(){
-    if(!running) return;
-    // physics
-    player.vy += gravity;
-    player.y += player.vy;
-    if(player.y >= GROUND){ player.y = GROUND; player.vy = 0; player.onGround = true; }
-
-    spawnTimer--;
-    if(spawnTimer <= 0){
-      spawn();
-      spawnTimer = 60 + Math.random()*60 - Math.min(score/40, 35);
-    }
-
-    obstacles.forEach(o=> o.x -= speed);
-    obstacles = obstacles.filter(o=> o.x + o.w > 0);
-
-    for(const o of obstacles){
-      if(rect(player, o)){
-        gameOver = true; running = false;
-        best = Math.max(best, Math.floor(score));
-        draw();
-        document.getElementById('score').textContent =
-          'Puntos: '+Math.floor(score)+'  ·  Mejor: '+best;
-        return;
-      }
-    }
-
-    score += 0.1;
-    speed += 0.0009;
-    document.getElementById('score').textContent =
-      'Puntos: '+Math.floor(score)+'  ·  Mejor: '+best;
-
-    draw();
-    requestAnimationFrame(loop);
-  }
-
-  reset();
-  draw();
-  // idle prompt before first input
-  ctx.fillStyle = GOLD;
-  ctx.font = "600 16px 'DM Sans', sans-serif";
-  ctx.textAlign = 'center';
-  ctx.fillText('Toca o presiona espacio para jugar', W/2, H/2);
-  let started = false;
-  function start(){ if(!started){ started = true; loop(); } }
-  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.code==='ArrowUp') start(); });
-  cv.addEventListener('mousedown', start);
-  cv.addEventListener('touchstart', start, {passive:false});
+  reset(); state='start'; draw();
+  function begin(){ if(state==='start'){ state='play'; } }
+  document.addEventListener('keydown',e=>{ if(['Space','ArrowLeft','ArrowRight'].includes(e.code)) begin(); });
+  cv.addEventListener('mousedown',begin);
+  cv.addEventListener('touchstart',begin,{passive:false});
+  requestAnimationFrame(step);
 })();
 </script>
 </body>
